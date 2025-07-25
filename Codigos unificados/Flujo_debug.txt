@@ -1,0 +1,233 @@
+// main.c - Espirómetro con sensor YF-S401 para PSoC 5LP
+// Configuración UART: 115200 baud, 8 bits, paridad par, 1 bit de parada
+
+#include "project.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+// Variables globales para el contador de pulsos
+volatile uint32 pulseCount = 0;
+volatile uint8 measurementReady = 0;
+
+// Variables para control del espirómetro
+volatile uint32 noFlowCounter = 0;  // Contador de tiempo sin flujo
+volatile uint8 isBlowing = 0;       // Flag para indicar si está soplando
+volatile uint32 sessionPulseCount = 0;  // Contador de pulsos de la sesión actual
+
+// Configuraciones del espirómetro
+#define NO_FLOW_TIMEOUT_MS 3000     // 3 segundos sin flujo para resetear
+#define MIN_FLOW_THRESHOLD 1        // Mínimo de pulsos por segundo para considerar flujo (muy bajo para aire)
+#define TIMER_PERIOD_MS 1           // Timer cada 1ms
+
+// Factores de conversión para aire vs agua
+// El aire tiene densidad ~1.2 kg/m³, el agua ~1000 kg/m³
+// Factor de densidad: 1000/1.2 ≈ 833
+// Factor de calibración experimental para aire: ~0.15 (ajustable)
+#define AIR_CALIBRATION_FACTOR 15   // Factor x100 para mantener enteros (0.15 * 100)
+
+// Interrupt Service Routine para el sensor de flujo
+CY_ISR(FlowSensor_ISR)
+{
+    pulseCount++;
+    sessionPulseCount++;
+    
+    // Limpiar la interrupción
+    FlowSensor_Pin_ClearInterrupt();
+}
+volatile uint32 timerISRCount = 0; 
+// Interrupt Service Routine para el timer (1ms)
+CY_ISR(Timer_ISR)
+{
+    static uint32 msCounter = 0;
+    
+    timerISRCount++; // Contador para verificar que el ISR funciona
+    msCounter++;
+    
+    // Incrementar contador de tiempo sin flujo solo si no hay pulsos recientes
+    static uint32 lastPulseCount = 0;
+    if(pulseCount == lastPulseCount)
+    {
+        noFlowCounter++;
+    }
+    else
+    {
+        noFlowCounter = 0; // Reset si hay pulsos nuevos
+        lastPulseCount = pulseCount;
+    }
+    
+    // Cada 1000ms (1 segundo) hacer medición
+    if(msCounter >= 1000)
+    {
+        measurementReady = 1;
+        msCounter = 0;
+    }
+    
+    // Limpiar la interrupción del timer
+    Timer_ReadStatusRegister();
+}
+
+int main(void)
+{
+    CyGlobalIntEnable; // Habilitar interrupciones globales
+    
+    // Variables para el cálculo del flujo
+    char uartBuffer[128];
+    uint32 debugCounter = 0;
+    uint32 lastSessionPulseCount = 0;
+    uint32 currentPulsesPerSecond = 0;
+    
+    // Inicializar componentes
+    UART_1_Start();
+    Timer_Start();
+    
+    // Configurar y habilitar la interrupción del pin del sensor
+    FlowSensor_ISR_StartEx(FlowSensor_ISR);
+    
+    // Configurar y habilitar la interrupción del timer
+    Timer_ISR_StartEx(Timer_ISR);
+    
+    // Mensaje inicial
+    sprintf(uartBuffer, "=== ESPIROMETRO YF-S401 (AIRE) INICIADO ===\r\n");
+    UART_1_PutString(uartBuffer);
+    sprintf(uartBuffer, "Umbral minimo: %d pulsos/seg\r\n", MIN_FLOW_THRESHOLD);
+    UART_1_PutString(uartBuffer);
+    sprintf(uartBuffer, "Timeout sin flujo: %d ms\r\n", NO_FLOW_TIMEOUT_MS);
+    UART_1_PutString(uartBuffer);
+    sprintf(uartBuffer, "Factor calibracion aire: %d.%02d\r\n", AIR_CALIBRATION_FACTOR/100, AIR_CALIBRATION_FACTOR%100);
+    UART_1_PutString(uartBuffer);
+    sprintf(uartBuffer, "Comenzar a soplar...\r\n\r\n");
+    UART_1_PutString(uartBuffer);
+    
+    for(;;)
+    {
+        // Método alternativo: medir cada 1000ms usando contador de loops
+        static uint32 loopCounter = 0;
+        static uint32 lastPulseCountBackup = 0;
+        
+        loopCounter++;
+        
+        // Cada 100 loops (aprox 1 segundo con delay de 10ms)
+        if(loopCounter >= 100)
+        {
+            loopCounter = 0;
+            
+            // Leer valores actuales de forma segura
+            CyGlobalIntDisable;
+            uint32 currentPulseCount = pulseCount;
+            uint32 currentSessionCount = sessionPulseCount;
+            uint32 currentTimerISRCount = timerISRCount;
+            CyGlobalIntEnable;
+            
+            // Calcular pulsos por segundo usando método de respaldo
+            uint32 pulsesPerSecond = currentPulseCount - lastPulseCountBackup;
+            lastPulseCountBackup = currentPulseCount;
+            
+            // Mostrar información de debug del timer
+            sprintf(uartBuffer, "=== TIMER DEBUG: ISR Count: %lu, MedReady: %d ===\r\n", 
+                    currentTimerISRCount, measurementReady);
+            UART_1_PutString(uartBuffer);
+            
+            // Mostrar medición usando método de respaldo
+            sprintf(uartBuffer, "=== MEDICION (BACKUP): %lu pulsos/seg ===\r\n", pulsesPerSecond);
+            UART_1_PutString(uartBuffer);
+            
+            // Determinar si está soplando actualmente
+            uint8 currentlyBlowing = (pulsesPerSecond >= MIN_FLOW_THRESHOLD);
+            
+            // Lógica de reset manual (3 segundos sin flujo)
+            static uint32 noFlowLoops = 0;
+            if(pulsesPerSecond == 0)
+            {
+                noFlowLoops++;
+            }
+            else
+            {
+                noFlowLoops = 0;
+            }
+            
+            // Reset después de 3 loops sin flujo (3 segundos)
+            if(noFlowLoops >= 3)
+            {
+                if(isBlowing || currentSessionCount > 0)
+                {
+                    sprintf(uartBuffer, "=== SESION TERMINADA - RESETEANDO (BACKUP) ===\r\n");
+                    UART_1_PutString(uartBuffer);
+                    
+                    CyGlobalIntDisable;
+                    sessionPulseCount = 0;
+                    CyGlobalIntEnable;
+                    
+                    currentSessionCount = 0;
+                }
+                isBlowing = 0;
+                noFlowLoops = 0;
+            }
+            else if(currentlyBlowing)
+            {
+                if(!isBlowing)
+                {
+                    sprintf(uartBuffer, "=== COMENZANDO MEDICION (BACKUP) ===\r\n");
+                    UART_1_PutString(uartBuffer);
+                }
+                isBlowing = 1;
+            }
+            
+            // Calcular flujo
+            uint32 instantFlowRate_x100 = (pulsesPerSecond * AIR_CALIBRATION_FACTOR * 100) / 750;
+            uint32 totalFlowRate_x100 = (currentSessionCount * AIR_CALIBRATION_FACTOR * 100) / 7500;
+            
+            // Mostrar datos
+            sprintf(uartBuffer, "Flujo Inst: %lu.%02lu L/min | Vol Acum: %lu.%02lu L | Pulsos/seg: %lu | Total: %lu\r\n", 
+                    instantFlowRate_x100/100, instantFlowRate_x100%100,
+                    totalFlowRate_x100/100, totalFlowRate_x100%100,
+                    pulsesPerSecond, currentSessionCount);
+            UART_1_PutString(uartBuffer);
+            
+            // CSV
+            sprintf(uartBuffer, "DATA,%lu.%02lu,%lu.%02lu,%lu,%lu,%d\r\n", 
+                    instantFlowRate_x100/100, instantFlowRate_x100%100,
+                    totalFlowRate_x100/100, totalFlowRate_x100%100,
+                    pulsesPerSecond, currentSessionCount, isBlowing);
+            UART_1_PutString(uartBuffer);
+        }
+        
+        // Debug continuo cada 500ms para ver estado del sensor
+        static uint32 debugTime = 0;
+        debugTime++;
+        
+        if(debugTime >= 50) // Cada 500ms (50 * 10ms)
+        {
+            debugTime = 0;
+            
+            // Leer valores actuales de forma segura
+            CyGlobalIntDisable;
+            uint32 currentPulseCount = pulseCount;
+            uint32 currentSessionCount = sessionPulseCount;
+            uint32 currentNoFlowTime = noFlowCounter;
+            uint32 currentTimerISRCount = timerISRCount;
+            CyGlobalIntEnable;
+            
+            // Mostrar estado del pin y contadores
+            sprintf(uartBuffer, "PIN: %d | Pulsos: %lu | Sesion: %lu | TimerISR: %lu | MedReady: %d\r\n", 
+                    FlowSensor_Pin_Read(), currentPulseCount, currentSessionCount, currentTimerISRCount, measurementReady);
+            UART_1_PutString(uartBuffer);
+        }
+        
+        // Verificar si el timer ISR funciona (método original)
+        if(measurementReady)
+        {
+            // Este código solo se ejecutará si el timer ISR funciona correctamente
+            sprintf(uartBuffer, "=== TIMER ISR FUNCIONA! ===\r\n");
+            UART_1_PutString(uartBuffer);
+            
+            CyGlobalIntDisable;
+            measurementReady = 0;
+            CyGlobalIntEnable;
+        }
+        
+        // Delay de 10ms
+        CyDelay(10);
+    }
+}
+
+/* [] END OF FILE */

@@ -1,0 +1,589 @@
+#include "project.h"
+#include <stdio.h>
+
+// Posibles direcciones I2C del MAX30102
+#define MAX30102_ADDRESS    0x57  // Dirección principal del MAX30102
+#define MAX30102_PART_ID    0xFF
+#define MAX30102_REV_ID     0xFE
+
+// Registros del MAX30102
+#define REG_INTR_STATUS_1   0x00
+#define REG_INTR_STATUS_2   0x01
+#define REG_INTR_ENABLE_1   0x02
+#define REG_INTR_ENABLE_2   0x03
+#define REG_FIFO_WR_PTR     0x04
+#define REG_OVF_COUNTER     0x05
+#define REG_FIFO_RD_PTR     0x06
+#define REG_FIFO_DATA       0x07
+#define REG_FIFO_CONFIG     0x08
+#define REG_MODE_CONFIG     0x09
+#define REG_SPO2_CONFIG     0x0A
+#define REG_LED1_PA         0x0C  // LED Rojo
+#define REG_LED2_PA         0x0D  // LED IR
+#define REG_PILOT_PA        0x10
+#define REG_MULTI_LED_CTRL1 0x11
+#define REG_MULTI_LED_CTRL2 0x12
+#define REG_TEMP_INTR       0x1F
+#define REG_TEMP_FRAC       0x20
+#define REG_TEMP_CONFIG     0x21
+#define REG_PROX_INT_THRESH 0x30
+#define REG_REV_ID          0xFE
+#define REG_PART_ID         0xFF
+
+// Valores esperados para MAX30102
+#define MAX30102_EXPECTED_PARTID 0x15
+
+// Variables globales
+char uartBuffer[100];
+uint8_t deviceFound = 0;
+uint8_t sensorAddress = MAX30102_ADDRESS;
+
+// Función simple para enviar string
+void sendString(const char* str) {
+    while (*str) {
+        UART_1_PutChar(*str);
+        str++;
+    }
+}
+
+// Función para interpretar códigos de estado I2C
+void interpretI2CStatus(uint8_t status) {
+    sprintf(uartBuffer, "Estado I2C: 0x%02X - ", status);
+    sendString(uartBuffer);
+    
+    if (status & I2C_1_MSTAT_RD_CMPLT) {
+        sendString("READ_COMPLETE ");
+    }
+    if (status & I2C_1_MSTAT_WR_CMPLT) {
+        sendString("WRITE_COMPLETE ");
+    }
+    if (status & I2C_1_MSTAT_XFER_INP) {
+        sendString("TRANSFER_IN_PROGRESS ");
+    }
+    if (status & I2C_1_MSTAT_XFER_HALT) {
+        sendString("TRANSFER_HALTED ");
+    }
+    if (status & I2C_1_MSTAT_ERR_MASK) {
+        sendString("ERROR ");
+        if (status & I2C_1_MSTAT_ERR_ADDR_NAK) {
+            sendString("(ADDR_NAK) ");
+        }
+        if (status & I2C_1_MSTAT_ERR_ARB_LOST) {
+            sendString("(ARB_LOST) ");
+        }
+    }
+    
+    if (status == 0) {
+        sendString("IDLE");
+    }
+    
+    sendString("\r\n");
+}
+
+// Función mejorada para escribir registro I2C
+uint8_t writeI2C(uint8_t address, uint8_t reg, uint8_t value) {
+    uint8_t writeBuffer[2] = {reg, value};
+    uint8_t status;
+    
+    sprintf(uartBuffer, "Escribiendo 0x%02X -> Reg:0x%02X, Val:0x%02X\r\n", address, reg, value);
+    sendString(uartBuffer);
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    status = I2C_1_MasterWriteBuf(address, writeBuffer, 2, I2C_1_MODE_COMPLETE_XFER);
+    
+    if (status != I2C_1_MSTR_NO_ERROR) {
+        sprintf(uartBuffer, "  Error inicial: 0x%02X\r\n", status);
+        sendString(uartBuffer);
+        return 0;
+    }
+    
+    // Esperar hasta que termine
+    uint16_t timeout = 1000;
+    while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+        CyDelay(1);
+    }
+    
+    if (timeout == 0) {
+        sendString("  Timeout en escritura\r\n");
+        return 0;
+    }
+    
+    // Verificar errores
+    uint8_t masterStatus = I2C_1_MasterStatus();
+    if (masterStatus & I2C_1_MSTAT_ERR_MASK) {
+        sendString("  Error final: ");
+        interpretI2CStatus(masterStatus);
+        return 0;
+    }
+    
+    sendString("  Escritura OK\r\n");
+    return 1;
+}
+
+// Función mejorada para leer registro I2C
+uint8_t readI2C(uint8_t address, uint8_t reg, uint8_t *value) {
+    uint8_t status;
+    
+    sprintf(uartBuffer, "Leyendo 0x%02X -> Reg:0x%02X\r\n", address, reg);
+    sendString(uartBuffer);
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    // Escribir registro
+    status = I2C_1_MasterWriteBuf(address, &reg, 1, I2C_1_MODE_NO_STOP);
+    if (status != I2C_1_MSTR_NO_ERROR) {
+        sprintf(uartBuffer, "  Error write: 0x%02X\r\n", status);
+        sendString(uartBuffer);
+        return 0;
+    }
+    
+    // Esperar
+    uint16_t timeout = 1000;
+    while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+        CyDelay(1);
+    }
+    
+    if (timeout == 0) {
+        sendString("  Timeout en write\r\n");
+        return 0;
+    }
+    
+    // Leer valor
+    status = I2C_1_MasterReadBuf(address, value, 1, I2C_1_MODE_COMPLETE_XFER);
+    if (status != I2C_1_MSTR_NO_ERROR) {
+        sprintf(uartBuffer, "  Error read: 0x%02X\r\n", status);
+        sendString(uartBuffer);
+        return 0;
+    }
+    
+    // Esperar
+    timeout = 1000;
+    while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+        CyDelay(1);
+    }
+    
+    if (timeout == 0) {
+        sendString("  Timeout en read\r\n");
+        return 0;
+    }
+    
+    // Verificar errores
+    uint8_t masterStatus = I2C_1_MasterStatus();
+    if (masterStatus & I2C_1_MSTAT_ERR_MASK) {
+        sendString("  Error final: ");
+        interpretI2CStatus(masterStatus);
+        return 0;
+    }
+    
+    sprintf(uartBuffer, "  Valor leido: 0x%02X\r\n", *value);
+    sendString(uartBuffer);
+    return 1;
+}
+
+// Función de escaneo I2C detallado
+void scanI2CDetailed() {
+    uint8_t address;
+    uint8_t devicesFound = 0;
+    
+    sendString("\r\n=== ESCANEO I2C DETALLADO ===\r\n");
+    
+    // Verificar estado inicial de I2C
+    uint8_t initialStatus = I2C_1_MasterStatus();
+    sendString("Estado inicial I2C: ");
+    interpretI2CStatus(initialStatus);
+    
+    sendString("\r\nEscaneando direcciones 0x08 a 0x77...\r\n");
+    
+    for (address = 0x08; address < 0x78; address++) {
+        sprintf(uartBuffer, "Probando 0x%02X: ", address);
+        sendString(uartBuffer);
+        
+        // Limpiar errores previos
+        I2C_1_MasterClearStatus();
+        
+        // Intentar escribir 0 bytes (solo verificar ACK de dirección)
+        uint8_t result = I2C_1_MasterSendStart(address, 0); // 0 = write
+        
+        if (result == I2C_1_MSTR_NO_ERROR) {
+            // Esperar un poco
+            CyDelay(5);
+            uint8_t status = I2C_1_MasterStatus();
+            
+            // Enviar STOP
+            I2C_1_MasterSendStop();
+            
+            // Verificar si hay errores
+            if (status & I2C_1_MSTAT_ERR_MASK) {
+                sendString("NAK\r\n");
+            } else {
+                sendString("ACK - DISPOSITIVO ENCONTRADO!\r\n");
+                devicesFound++;
+            }
+        } else {
+            sendString("ERROR\r\n");
+        }
+        
+        // Limpiar y dar tiempo
+        I2C_1_MasterSendStop();
+        CyDelay(10);
+    }
+    
+    sprintf(uartBuffer, "\r\nTotal dispositivos encontrados: %d\r\n", devicesFound);
+    sendString(uartBuffer);
+}
+
+// Test del sensor MAX30102 con diagnóstico completo
+uint8_t testSensorComplete() {
+    uint8_t partID, revID;
+    
+    sendString("\r\n=== TEST MAX30102 COMPLETO ===\r\n");
+    
+    sprintf(uartBuffer, "Probando direccion MAX30102: 0x%02X\r\n", MAX30102_ADDRESS);
+    sendString(uartBuffer);
+    
+    // Leer Part ID
+    if (readI2C(MAX30102_ADDRESS, REG_PART_ID, &partID)) {
+        sprintf(uartBuffer, "Part ID: 0x%02X ", partID);
+        sendString(uartBuffer);
+        
+        if (partID == MAX30102_EXPECTED_PARTID) {
+            sendString("(MAX30102 DETECTADO!)\r\n");
+            
+            // Leer Revision ID
+            if (readI2C(MAX30102_ADDRESS, REG_REV_ID, &revID)) {
+                sprintf(uartBuffer, "Rev ID: 0x%02X\r\n", revID);
+                sendString(uartBuffer);
+                
+                deviceFound = 1;
+                return 1;
+            }
+        } else {
+            sendString("(No es MAX30102)\r\n");
+        }
+    } else {
+        sendString("No se pudo leer Part ID\r\n");
+    }
+    
+    sendString("\r\nMAX30102 NO ENCONTRADO\r\n");
+    return 0;
+}
+
+// Función para configurar correctamente el MAX30102
+uint8_t configureSensor() {
+    if (!deviceFound) {
+        sendString("Error: No hay sensor detectado\r\n");
+        return 0;
+    }
+    
+    sendString("\r\n=== CONFIGURACION MAX30102 ===\r\n");
+    
+    // 1. Reset del sensor
+    sendString("1. Reseteando sensor...\r\n");
+    if (!writeI2C(MAX30102_ADDRESS, REG_MODE_CONFIG, 0x40)) {
+        sendString("Error en reset\r\n");
+        return 0;
+    }
+    
+    // Esperar más tiempo para el reset
+    CyDelay(500);
+    
+    // 2. Limpiar FIFO
+    sendString("2. Limpiando FIFO...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_FIFO_WR_PTR, 0x00);
+    writeI2C(MAX30102_ADDRESS, REG_OVF_COUNTER, 0x00);
+    writeI2C(MAX30102_ADDRESS, REG_FIFO_RD_PTR, 0x00);
+    
+    // 3. Configurar FIFO - valores más conservadores
+    sendString("3. Configurando FIFO...\r\n");
+    if (!writeI2C(MAX30102_ADDRESS, REG_FIFO_CONFIG, 0x10)) { // Average=1, rollover=false, almost full=16
+        sendString("Error configurando FIFO\r\n");
+        return 0;
+    }
+    
+    // 4. Configurar modo SpO2
+    sendString("4. Configurando modo SpO2...\r\n");
+    if (!writeI2C(MAX30102_ADDRESS, REG_MODE_CONFIG, 0x03)) { // SpO2 mode
+        sendString("Error configurando modo\r\n");
+        return 0;
+    }
+    
+    // 5. Configurar SpO2 parameters - valores más estables
+    sendString("5. Configurando parametros SpO2...\r\n");
+    if (!writeI2C(MAX30102_ADDRESS, REG_SPO2_CONFIG, 0x27)) { // ADC=4096nA, SR=100Hz, PW=411us
+        sendString("Error configurando SpO2\r\n");
+        return 0;
+    }
+    
+    // 6. Configurar corriente de LEDs - empezar con valores altos
+    sendString("6. Configurando corriente de LEDs...\r\n");
+    if (!writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0x7F)) { // Alta corriente LED Rojo
+        sendString("Error configurando LED1\r\n");
+        return 0;
+    }
+    
+    if (!writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0x7F)) { // Alta corriente LED IR
+        sendString("Error configurando LED2\r\n");
+        return 0;
+    }
+    
+    // 7. Configurar multi-LED control
+    sendString("7. Configurando multi-LED control...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_MULTI_LED_CTRL1, 0x21); // Slot 1=Red, Slot 2=IR
+    writeI2C(MAX30102_ADDRESS, REG_MULTI_LED_CTRL2, 0x00); // Slot 3,4=None
+    
+    // 8. Verificar que la configuración se aplicó
+    sendString("8. Verificando configuracion...\r\n");
+    uint8_t modeCheck, spo2Check, led1Check, led2Check;
+    
+    if (readI2C(MAX30102_ADDRESS, REG_MODE_CONFIG, &modeCheck) &&
+        readI2C(MAX30102_ADDRESS, REG_SPO2_CONFIG, &spo2Check) &&
+        readI2C(MAX30102_ADDRESS, REG_LED1_PA, &led1Check) &&
+        readI2C(MAX30102_ADDRESS, REG_LED2_PA, &led2Check)) {
+        
+        sprintf(uartBuffer, "Valores configurados: MODE=0x%02X, SPO2=0x%02X, LED1=0x%02X, LED2=0x%02X\r\n",
+                modeCheck, spo2Check, led1Check, led2Check);
+        sendString(uartBuffer);
+        
+        if (modeCheck == 0x03 && led1Check == 0x7F && led2Check == 0x7F) {
+            sendString("Configuracion CORRECTA!\r\n");
+            return 1;
+        } else {
+            sendString("Configuracion INCORRECTA!\r\n");
+            return 0;
+        }
+    } else {
+        sendString("Error verificando configuracion\r\n");
+        return 0;
+    }
+}
+
+// Test de LEDs con configuración adecuada
+void testLEDs() {
+    sendString("\r\n=== TEST DE LEDs MAX30102 ===\r\n");
+    
+    if (!configureSensor()) {
+        sendString("Error en configuracion inicial\r\n");
+        return;
+    }
+    
+    sendString("\r\nProbando diferentes intensidades de LEDs...\r\n");
+    
+    // Test con intensidad muy alta para asegurar visibilidad
+    sendString("Test 1: Maxima intensidad (0xFF)...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0xFF);
+    writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0xFF);
+    
+    // Verificar que se escribieron correctamente
+    uint8_t led1Val, led2Val;
+    if (readI2C(MAX30102_ADDRESS, REG_LED1_PA, &led1Val) &&
+        readI2C(MAX30102_ADDRESS, REG_LED2_PA, &led2Val)) {
+        sprintf(uartBuffer, "LED1 configurado: 0x%02X, LED2 configurado: 0x%02X\r\n", led1Val, led2Val);
+        sendString(uartBuffer);
+    }
+    
+    sendString("*** VERIFICA AHORA SI HAY LUZ ROJA/INFRARROJA ***\r\n");
+    sendString("Esperando 5 segundos con LEDs al maximo...\r\n");
+    CyDelay(5000);
+    
+    // Test con intensidad media
+    sendString("Test 2: Intensidad media (0x7F)...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0x7F);
+    writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0x7F);
+    CyDelay(3000);
+    
+    // Test con baja intensidad
+    sendString("Test 3: Baja intensidad (0x1F)...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0x1F);
+    writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0x1F);
+    CyDelay(3000);
+    
+    // Test alternando LEDs
+    sendString("Test 4: Alternando LEDs...\r\n");
+    for (int i = 0; i < 5; i++) {
+        sendString("Solo LED Rojo...\r\n");
+        writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0xFF);
+        writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0x00);
+        CyDelay(1000);
+        
+        sendString("Solo LED IR...\r\n");
+        writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0x00);
+        writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0xFF);
+        CyDelay(1000);
+    }
+    
+    sendString("\r\nSi NO ves luz roja/infrarroja, verifica:\r\n");
+    sendString("1. Alimentacion del sensor (3.3V exactos)\r\n");
+    sendString("2. Conexiones I2C correctas\r\n");
+    sendString("3. Sensor fisicamente dagado\r\n");
+    sendString("4. Configuracion del modo de operacion\r\n");
+    
+    // Regresar a configuración normal
+    sendString("Regresando a configuracion normal...\r\n");
+    writeI2C(MAX30102_ADDRESS, REG_LED1_PA, 0x7F);
+    writeI2C(MAX30102_ADDRESS, REG_LED2_PA, 0x7F);
+}
+
+// Función para leer datos del sensor
+void readSensorData() {
+    if (!deviceFound) {
+        sendString("Error: No hay sensor detectado\r\n");
+        return;
+    }
+    
+    sendString("\r\n=== LECTURA DE DATOS ===\r\n");
+    
+    // Configurar sensor primero
+    if (!configureSensor()) {
+        sendString("Error en configuracion\r\n");
+        return;
+    }
+    
+    sendString("Leyendo datos del FIFO...\r\n");
+    
+    for (int i = 0; i < 10; i++) {
+        uint8_t fifoData[6]; // 3 bytes por LED x 2 LEDs
+        
+        // Leer 6 bytes del FIFO
+        for (int j = 0; j < 6; j++) {
+            if (!readI2C(MAX30102_ADDRESS, REG_FIFO_DATA, &fifoData[j])) {
+                sendString("Error leyendo FIFO\r\n");
+                return;
+            }
+        }
+        
+        // Procesar datos (18 bits por LED)
+        uint32_t redValue = ((uint32_t)fifoData[0] << 16) | ((uint32_t)fifoData[1] << 8) | fifoData[2];
+        uint32_t irValue = ((uint32_t)fifoData[3] << 16) | ((uint32_t)fifoData[4] << 8) | fifoData[5];
+        
+        // Limpiar bits no utilizados (solo 18 bits son válidos)
+        redValue &= 0x3FFFF;
+        irValue &= 0x3FFFF;
+        
+       sprintf(uartBuffer, "Muestra %d: RED=%u, IR=%u\r\n", i + 1, redValue, irValue);
+
+        sendString(uartBuffer);
+        
+        CyDelay(100);
+    }
+}
+
+// Test de configuración de PSoC
+void testPSoCConfig() {
+    sendString("\r\n=== TEST CONFIGURACION PSoC ===\r\n");
+    
+    // Información sobre la configuración
+    sendString("Configuracion esperada para MAX30102:\r\n");
+    sendString("- I2C_Master en P1[6] (SCL) y P1[7] (SDA)\r\n");
+    sendString("- Pull-ups de 4.7K ohm a 3.3V\r\n");
+    sendString("- Velocidad I2C: 100 kHz\r\n");
+    sendString("- Alimentacion sensor: 3.3V\r\n");
+    sendString("- Direccion I2C: 0x57\r\n");
+    
+    // Verificar estado I2C
+    uint8_t status = I2C_1_MasterStatus();
+    sendString("\r\nEstado actual I2C: ");
+    interpretI2CStatus(status);
+    
+    sendString("\r\nDiferencias MAX30102 vs MAX30105:\r\n");
+    sendString("- MAX30102: Solo LEDs Rojo e IR\r\n");
+    sendString("- MAX30105: LEDs Rojo, IR y Verde\r\n");
+    sendString("- Misma direccion I2C: 0x57\r\n");
+    sendString("- Mismos registros principales\r\n");
+}
+
+int main() {
+    // Inicializar componentes
+    CyGlobalIntEnable;
+    I2C_1_Start();
+    UART_1_Start();
+    
+    // Esperar para estabilización
+    CyDelay(2000);
+    
+    // Header del programa
+    sendString("\r\n\r\n");
+    sendString("===========================================\r\n");
+    sendString("   MAX30102 DIAGNOSTICO COMPLETO PSoC     \r\n");
+    sendString("===========================================\r\n");
+    
+    // Test de configuración PSoC
+    testPSoCConfig();
+    
+    CyDelay(2000);
+    
+    // Escanear I2C detallado
+    scanI2CDetailed();
+    
+    CyDelay(2000);
+    
+    // Test del sensor completo
+    deviceFound = testSensorComplete();
+    
+    if (deviceFound) {
+        sprintf(uartBuffer, "\r\n*** MAX30102 DETECTADO en 0x%02X ***\r\n", MAX30102_ADDRESS);
+        sendString(uartBuffer);
+        
+        // Test de LEDs
+        testLEDs();
+        
+        sendString("\r\nSi los LEDs no encienden, puede ser:\r\n");
+        sendString("1. Problema de alimentacion\r\n");
+        sendString("2. Sensor defectuoso\r\n");
+        sendString("3. Configuracion incorrecta\r\n");
+        
+    } else {
+        sendString("\r\n*** MAX30102 NO DETECTADO ***\r\n");
+        sendString("Posibles causas:\r\n");
+        sendString("1. Conexiones I2C incorrectas\r\n");
+        sendString("2. Falta de pull-ups\r\n");
+        sendString("3. Voltaje incorrecto\r\n");
+        sendString("4. Sensor dayado\r\n");
+        sendString("5. Configuracion PSoC incorrecta\r\n");
+    }
+    
+    // Loop interactivo
+    for(;;) {
+        sendString("\r\n=== MENU INTERACTIVO MAX30102 ===\r\n");
+        sendString("1 - Escanear I2C\r\n");
+        sendString("2 - Test sensor\r\n");
+        sendString("3 - Test LEDs\r\n");
+        sendString("4 - Leer datos\r\n");
+        sendString("5 - Info PSoC\r\n");
+        sendString("Ingrese opcion: ");
+        
+        // Esperar entrada del usuario
+        while (UART_1_GetRxBufferSize() == 0) {
+            CyDelay(100);
+        }
+        
+        uint8_t option = UART_1_GetChar();
+        sprintf(uartBuffer, "%c\r\n", option);
+        sendString(uartBuffer);
+        
+        switch(option) {
+            case '1':
+                scanI2CDetailed();
+                break;
+            case '2':
+                deviceFound = testSensorComplete();
+                break;
+            case '3':
+                testLEDs();
+                break;
+            case '4':
+                readSensorData();
+                break;
+            case '5':
+                testPSoCConfig();
+                break;
+            default:
+                sendString("Opcion no valida\r\n");
+                break;
+        }
+        
+        CyDelay(1000);
+    }
+}

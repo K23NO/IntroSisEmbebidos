@@ -1,0 +1,436 @@
+#include "project.h"
+#include <stdio.h>
+
+// Dirección I2C del MAX30102 (7 bits)
+#define MAX30102_ADDRESS    0x57
+
+// Registros principales
+#define REG_FIFO_WR_PTR     0x04
+#define REG_OVF_COUNTER     0x05
+#define REG_FIFO_RD_PTR     0x06
+#define REG_FIFO_DATA       0x07
+#define REG_FIFO_CONFIG     0x08
+#define REG_MODE_CONFIG     0x09
+#define REG_SPO2_CONFIG     0x0A
+#define REG_LED1_PA         0x0C  // LED Rojo
+#define REG_LED2_PA         0x0D  // LED IR
+#define REG_PART_ID         0xFF
+
+// Buffer UART
+char uartBuffer[100];
+
+// Función para enviar string por UART
+void sendString(const char* str) {
+    while (*str) {
+        UART_1_PutChar(*str);
+        str++;
+    }
+}
+
+// Función mejorada para escribir registro I2C
+uint8_t writeI2C(uint8_t reg, uint8_t value) {
+    uint8_t writeBuffer[2] = {reg, value};
+    uint8_t status;
+    
+    sprintf(uartBuffer, "Escribiendo Reg:0x%02X, Val:0x%02X\r\n", reg, value);
+    sendString(uartBuffer);
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    // Intentar múltiples veces si es necesario
+    for (int retry = 0; retry < 3; retry++) {
+        status = I2C_1_MasterWriteBuf(MAX30102_ADDRESS, writeBuffer, 2, I2C_1_MODE_COMPLETE_XFER);
+        
+        if (status != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "  Error inicial (intento %d): 0x%02X\r\n", retry + 1, status);
+            sendString(uartBuffer);
+            CyDelay(10);
+            continue;
+        }
+        
+        // Esperar hasta que termine con timeout más largo
+        uint16_t timeout = 5000;  // Aumentado el timeout
+        while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+            CyDelay(1);
+        }
+        
+        if (timeout == 0) {
+            sprintf(uartBuffer, "  Timeout en escritura (intento %d)\r\n", retry + 1);
+            sendString(uartBuffer);
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Verificar errores
+        uint8_t masterStatus = I2C_1_MasterStatus();
+        if (masterStatus & I2C_1_MSTAT_ERR_MASK) {
+            sprintf(uartBuffer, "  Error final (intento %d): 0x%02X\r\n", retry + 1, masterStatus);
+            sendString(uartBuffer);
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        sendString("  Escritura OK\r\n");
+        return 1;
+    }
+    
+    sendString("  FALLO: No se pudo escribir despues de 3 intentos\r\n");
+    return 0;
+}
+
+// Función alternativa para leer registro I2C usando transacciones separadas
+uint8_t readI2C(uint8_t reg, uint8_t *value) {
+    uint8_t status;
+    
+    sprintf(uartBuffer, "Leyendo Reg:0x%02X\r\n", reg);
+    sendString(uartBuffer);
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    // Intentar múltiples veces si es necesario
+    for (int retry = 0; retry < 3; retry++) {
+        sprintf(uartBuffer, "  Intento %d:\r\n", retry + 1);
+        sendString(uartBuffer);
+        
+        // MÉTODO 1: Transacciones separadas con STOP completo
+        // Escribir registro con STOP
+        status = I2C_1_MasterWriteBuf(MAX30102_ADDRESS, &reg, 1, I2C_1_MODE_COMPLETE_XFER);
+        if (status != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error write: 0x%02X\r\n", status);
+            sendString(uartBuffer);
+            CyDelay(10);
+            continue;
+        }
+        
+        // Esperar con timeout
+        uint16_t timeout = 1000;
+        while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+            CyDelay(1);
+        }
+        
+        if (timeout == 0) {
+            sendString("    Timeout en write\r\n");
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Verificar errores de escritura
+        uint8_t masterStatus = I2C_1_MasterStatus();
+        if (masterStatus & I2C_1_MSTAT_ERR_MASK) {
+            sprintf(uartBuffer, "    Error write status: 0x%02X\r\n", masterStatus);
+            sendString(uartBuffer);
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        sendString("    Write OK\r\n");
+        
+        // Pequeña pausa antes de leer
+        CyDelay(5);
+        
+        // Limpiar status antes de leer
+        I2C_1_MasterClearStatus();
+        
+        // Leer valor en transacción separada
+        status = I2C_1_MasterReadBuf(MAX30102_ADDRESS, value, 1, I2C_1_MODE_COMPLETE_XFER);
+        if (status != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error read: 0x%02X\r\n", status);
+            sendString(uartBuffer);
+            CyDelay(10);
+            continue;
+        }
+        
+        // Esperar
+        timeout = 1000;
+        while ((I2C_1_MasterStatus() & I2C_1_MSTAT_XFER_INP) && timeout--) {
+            CyDelay(1);
+        }
+        
+        if (timeout == 0) {
+            sendString("    Timeout en read\r\n");
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Verificar errores finales
+        masterStatus = I2C_1_MasterStatus();
+        if (masterStatus & I2C_1_MSTAT_ERR_MASK) {
+            sprintf(uartBuffer, "    Error read status: 0x%02X\r\n", masterStatus);
+            sendString(uartBuffer);
+            I2C_1_MasterClearStatus();
+            CyDelay(10);
+            continue;
+        }
+        
+        sprintf(uartBuffer, "    Valor leido: 0x%02X\r\n", *value);
+        sendString(uartBuffer);
+        sendString("  Lectura exitosa!\r\n");
+        return 1;
+    }
+    
+    sendString("  FALLO: No se pudo leer despues de 3 intentos\r\n");
+    return 0;
+}
+
+// Función alternativa usando funciones de bajo nivel
+uint8_t readI2C_LowLevel(uint8_t reg, uint8_t *value) {
+    sprintf(uartBuffer, "Leyendo Reg:0x%02X (Low Level)\r\n", reg);
+    sendString(uartBuffer);
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    for (int retry = 0; retry < 3; retry++) {
+        sprintf(uartBuffer, "  Intento %d:\r\n", retry + 1);
+        sendString(uartBuffer);
+        
+        // Enviar START + dirección de escritura
+        uint8_t result = I2C_1_MasterSendStart(MAX30102_ADDRESS, 0); // 0 = write
+        if (result != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error START: 0x%02X\r\n", result);
+            sendString(uartBuffer);
+            I2C_1_MasterSendStop();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Enviar registro
+        result = I2C_1_MasterWriteByte(reg);
+        if (result != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error WRITE REG: 0x%02X\r\n", result);
+            sendString(uartBuffer);
+            I2C_1_MasterSendStop();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Enviar RESTART + dirección de lectura
+        result = I2C_1_MasterSendRestart(MAX30102_ADDRESS, 1); // 1 = read
+        if (result != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error RESTART: 0x%02X\r\n", result);
+            sendString(uartBuffer);
+            I2C_1_MasterSendStop();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Leer byte con NAK
+        result = I2C_1_MasterReadByte(I2C_1_NAK_DATA);
+        if (result != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error READ: 0x%02X\r\n", result);
+            sendString(uartBuffer);
+            I2C_1_MasterSendStop();
+            CyDelay(10);
+            continue;
+        }
+        
+        // Obtener el dato leído
+        *value = I2C_1_MasterGetReadBufPtr()[0];
+        
+        // Enviar STOP
+        result = I2C_1_MasterSendStop();
+        if (result != I2C_1_MSTR_NO_ERROR) {
+            sprintf(uartBuffer, "    Error STOP: 0x%02X\r\n", result);
+            sendString(uartBuffer);
+            CyDelay(10);
+            continue;
+        }
+        
+        sprintf(uartBuffer, "    Valor leido: 0x%02X\r\n", *value);
+        sendString(uartBuffer);
+        sendString("  Lectura exitosa!\r\n");
+        return 1;
+    }
+    
+    sendString("  FALLO: No se pudo leer despues de 3 intentos\r\n");
+    return 0;
+}
+
+// Función simplificada para verificar dispositivo I2C
+uint8_t checkI2CDevice() {
+    sendString("Verificando comunicacion I2C...\r\n");
+    
+    // Limpiar errores previos
+    I2C_1_MasterClearStatus();
+    
+    // Método alternativo: intentar leer directamente un registro
+    uint8_t dummyValue;
+    
+    // Probar primero con el método normal
+    if (readI2C(REG_PART_ID, &dummyValue)) {
+        sendString("ACK - Dispositivo encontrado! (Metodo normal)\r\n");
+        return 1;
+    }
+    
+    // Si falla, probar con el método de bajo nivel
+    sendString("Metodo normal fallo, probando metodo de bajo nivel...\r\n");
+    if (readI2C_LowLevel(REG_PART_ID, &dummyValue)) {
+        sendString("ACK - Dispositivo encontrado! (Metodo bajo nivel)\r\n");
+        return 1;
+    }
+    
+    sendString("NAK - Dispositivo no responde\r\n");
+    return 0;
+}
+
+// Función para verificar si el sensor está presente
+uint8_t checkSensor() {
+    uint8_t partID;
+    
+    sendString("Verificando sensor MAX30102...\r\n");
+    
+    // Primero verificar comunicación I2C básica
+    if (!checkI2CDevice()) {
+        sendString("Error: No hay comunicacion I2C\r\n");
+        return 0;
+    }
+    
+    // Intentar leer el Part ID con ambos métodos
+    if (readI2C(REG_PART_ID, &partID) || readI2C_LowLevel(REG_PART_ID, &partID)) {
+        sprintf(uartBuffer, "Part ID: 0x%02X\r\n", partID);
+        sendString(uartBuffer);
+        
+        if (partID == 0x15) {
+            sendString("MAX30102 detectado correctamente!\r\n");
+            return 1;
+        } else {
+            sendString("Part ID no corresponde a MAX30102\r\n");
+            sprintf(uartBuffer, "Part ID esperado: 0x15, obtenido: 0x%02X\r\n", partID);
+            sendString(uartBuffer);
+            return 0;
+        }
+    } else {
+        sendString("Error: No se puede leer Part ID\r\n");
+        return 0;
+    }
+}
+
+// Función para configurar el sensor
+uint8_t configureSensor() {
+    sendString("Configurando sensor...\r\n");
+    
+    // 1. Reset del sensor
+    if (!writeI2C(REG_MODE_CONFIG, 0x40)) {
+        sendString("Error: Reset fallido\r\n");
+        return 0;
+    }
+    CyDelay(100);
+    
+    // 2. Limpiar FIFO
+    writeI2C(REG_FIFO_WR_PTR, 0x00);
+    writeI2C(REG_OVF_COUNTER, 0x00);
+    writeI2C(REG_FIFO_RD_PTR, 0x00);
+    
+    // 3. Configurar FIFO (promedio de 4 muestras, rollover habilitado)
+    if (!writeI2C(REG_FIFO_CONFIG, 0x4F)) {
+        sendString("Error: Configuracion FIFO fallida\r\n");
+        return 0;
+    }
+    
+    // 4. Configurar modo SpO2
+    if (!writeI2C(REG_MODE_CONFIG, 0x03)) {
+        sendString("Error: Configuracion de modo fallida\r\n");
+        return 0;
+    }
+    
+    // 5. Configurar SpO2 (ADC=4096nA, SR=100Hz, PW=411us)
+    if (!writeI2C(REG_SPO2_CONFIG, 0x27)) {
+        sendString("Error: Configuracion SpO2 fallida\r\n");
+        return 0;
+    }
+    
+    // 6. Configurar corriente de LEDs - AUMENTADA para mayor visibilidad
+    if (!writeI2C(REG_LED1_PA, 0x40)) {  // Aumentado de 0x24 a 0x40
+        sendString("Error: Configuracion LED1 fallida\r\n");
+        return 0;
+    }
+    
+    if (!writeI2C(REG_LED2_PA, 0x40)) {  // Aumentado de 0x24 a 0x40
+        sendString("Error: Configuracion LED2 fallida\r\n");
+        return 0;
+    }
+    
+    sendString("Sensor configurado correctamente!\r\n");
+    return 1;
+}
+
+// Función para leer datos del FIFO
+uint32_t readFIFO() {
+    uint8_t buffer[3];
+    uint32_t value = 0;
+    
+    // Leer 3 bytes del FIFO
+    if (readI2C(REG_FIFO_DATA, &buffer[0]) &&
+        readI2C(REG_FIFO_DATA, &buffer[1]) &&
+        readI2C(REG_FIFO_DATA, &buffer[2])) {
+        
+        // Combinar los 3 bytes en un valor de 18 bits
+        value = ((uint32_t)buffer[0] << 16) | ((uint32_t)buffer[1] << 8) | buffer[2];
+        value &= 0x3FFFF; // Mantener solo 18 bits
+    }
+    
+    return value;
+}
+
+// Función principal
+int main() {
+    // Inicializar componentes
+    CyGlobalIntEnable;
+    I2C_1_Start();
+    UART_1_Start();
+    
+    // Esperar estabilización más larga
+    CyDelay(2000);
+    
+    // Header
+    sendString("\r\n=== MAX30102 Sensor Simple ===\r\n");
+    
+    // Verificar y configurar sensor
+    if (!checkSensor()) {
+        sendString("FALLO: Sensor no detectado\r\n");
+        sendString("Verifique:\r\n");
+        sendString("1. Conexiones I2C (SDA, SCL)\r\n");
+        sendString("2. Alimentacion (3.3V)\r\n");
+        sendString("3. Pull-ups en I2C\r\n");
+        sendString("4. Direccion I2C correcta\r\n");
+        while(1) {
+            CyDelay(1000);
+        }
+    }
+    
+    if (!configureSensor()) {
+        sendString("FALLO: Error en configuracion\r\n");
+        while(1) {
+            CyDelay(1000);
+        }
+    }
+    
+    // Verificar que los LEDs se enciendan
+    sendString("\r\nLEDs deberian estar encendidos ahora...\r\n");
+    sendString("Si no ve los LEDs, verifique la alimentacion\r\n");
+    sendString("Iniciando lectura de datos:\r\n");
+    sendString("Formato: RED, IR\r\n\r\n");
+    
+    // Loop principal de lectura
+    while(1) {
+        uint32_t redValue, irValue;
+        
+        // Leer valores (RED primero, luego IR)
+        redValue = readFIFO();
+        irValue = readFIFO();
+        
+        // Enviar datos por UART
+        sprintf(uartBuffer, "%u, %u\r\n", redValue, irValue);
+        sendString(uartBuffer);
+        
+        // Pequeña pausa
+        CyDelay(100);
+    }
+}
