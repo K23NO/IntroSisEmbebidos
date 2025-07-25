@@ -1,0 +1,143 @@
+<svg viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg">
+  <!-- Título -->
+  <text x="700" y="30" text-anchor="middle" font-size="22" font-weight="bold" fill="#2c3e50">Sistema Embebido de Monitoreo Respiratorio - Diagrama de Bloques</text>
+  
+  <!-- Capa de Sensores -->
+  <rect x="50" y="80" width="1300" height="120" fill="#ecf0f1" stroke="#bdc3c7" stroke-width="2" rx="10"/>
+  <text x="700" y="100" text-anchor="middle" font-size="16" font-weight="bold" fill="#34495e">CAPA DE SENSORES</text>
+  
+  <!-- MAX30100 -->
+  <rect x="100" y="120" width="150" height="70" fill="#e74c3c" stroke="#c0392b" stroke-width="2" rx="5"/>
+  <text x="175" y="140" text-anchor="middle" font-size="12" font-weight="bold" fill="white">MAX30100</text>
+  <text x="175" y="155" text-anchor="middle" font-size="10" fill="white">SpO2 & Frecuencia</text>
+  <text x="175" y="170" text-anchor="middle" font-size="10" fill="white">Cardíaca</text>
+  <text x="175" y="185" text-anchor="middle" font-size="8" fill="white">I2C Master</text>
+  
+  <!-- BMP280 -->
+  <rect x="300" y="120" width="150" height="70" fill="#9b59b6" stroke="#8e44ad" stroke-width="2" rx="5"/>
+  <text x="375" y="140" text-anchor="middle" font-size="12" font-weight="bold" fill="white">BMP280</text>
+  <text x="375" y="155" text-anchor="middle" font-size="10" fill="white">Presión</text>
+  <text x="375" y="170" text-anchor="middle" font-size="10" fill="white">Atmosférica</text>
+  <text x="375" y="185" text-anchor="middle" font-size="8" fill="white">I2C Slave</text>
+  
+  <!-- YF-S401 -->
+  <rect x="500" y="120" width="150" height="70" fill="#27ae60" stroke="#229954" stroke-width="2" rx="5"/>
+  <text x="575" y="140" text-anchor="middle" font-size="12" font-weight="bold" fill="white">YF-S401</text>
+  <text x="575" y="155" text-anchor="middle" font-size="10" fill="white">Sensor de Flujo</text>
+  <text x="575" y="170" text-anchor="middle" font-size="10" fill="white">de Aire</text>
+  <text x="575" y="185" text-anchor="middle" font-size="8" fill="white">Pulsos Digitales</text>
+  
+  <!-- Capa de Procesamiento -->
+  <rect x="50" y="240" width="1300" height="200" fill="#d5dbdb" stroke="#bdc3c7" stroke-width="2" rx="10"/>
+  <text x="700" y="260" text-anchor="middle" font-size="16" font-weight="bold" fill="#34495e">CAPA DE PROCESAMIENTO</text>
+  
+  <!-- PSoC 5LP -->
+  <rect x="200" y="290" width="300" height="120" fill="#3498db" stroke="#2980b9" stroke-width="3" rx="8"/>
+  <text x="350" y="315" text-anchor="middle" font-size="16" font-weight="bold" fill="white">PSoC 5LP</text>
+  <text x="350" y="335" text-anchor="middle" font-size="12" font-weight="bold" fill="white">CONTROLADOR PRINCIPAL</text>
+  <text x="230" y="355" font-size="10" fill="white">• Procesamiento de señales</text>
+  <text x="230" y="370" font-size="10" fill="white">• ADC SAR para YF-S401</text>
+  <text x="230" y="385" font-size="10" fill="white">• Cálculos de flujo compensado</text>
+  <text x="230" y="400" font-size="10" fill="white">• Comunicación I2C y UART</text>
+  
+  <!-- ATmega328P -->
+  <rect x="550" y="290" width="250" height="120" fill="#e67e22" stroke="#d35400" stroke-width="3" rx="8"/>
+  <text x="675" y="315" text-anchor="middle" font-size="16" font-weight="bold" fill="white">ATmega328P</text>
+  <text x="675" y="335" text-anchor="middle" font-size="12" font-weight="bold" fill="white">CONTROL DE DISPLAY</text>
+  <text x="570" y="355" font-size="10" fill="white">• Control LCD con interrupciones</text>
+  <text x="570" y="370" font-size="10" fill="white">• Alternancia de información</text>
+  <text x="570" y="385" font-size="10" fill="white">• Programado en Assembly</text>
+  <text x="570" y="400" font-size="10" fill="white">• Comunicación SPI/UART</text>
+  
+  <!-- Algoritmos de Procesamiento -->
+  <rect x="850" y="290" width="200" height="120" fill="#f39c12" stroke="#e67e22" stroke-width="2" rx="5"/>
+  <text x="950" y="310" text-anchor="middle" font-size="12" font-weight="bold" fill="white">ALGORITMOS</text>
+  <text x="870" y="330" font-size="10" fill="white">• Compensación presión</text>
+  <text x="870" y="345" font-size="10" fill="white">• Cálculo flujo real</text>
+  <text x="870" y="360" font-size="10" fill="white">• Análisis SpO2</text>
+  <text x="870" y="375" font-size="10" fill="white">• Detección picos</text>
+  <text x="870" y="390" font-size="10" fill="white">• Filtrado digital</text>
+  
+  <!-- Capa de Comunicación -->
+  <rect x="50" y="480" width="1300" height="100" fill="#f8f9fa" stroke="#bdc3c7" stroke-width="2" rx="10"/>
+  <text x="700" y="500" text-anchor="middle" font-size="16" font-weight="bold" fill="#34495e">CAPA DE COMUNICACIÓN</text>
+  
+  <!-- Bus I2C -->
+  <rect x="150" y="520" width="200" height="50" fill="#e67e22" stroke="#d35400" stroke-width="2" rx="5"/>
+  <text x="250" y="540" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Bus I2C</text>
+  <text x="250" y="555" text-anchor="middle" font-size="10" fill="white">MAX30100 (Master)</text>
+  
+  <!-- UART/SPI PSoC-ATmega -->
+  <rect x="400" y="520" width="200" height="50" fill="#8e44ad" stroke="#7d3c98" stroke-width="2" rx="5"/>
+  <text x="500" y="540" text-anchor="middle" font-size="12" font-weight="bold" fill="white">SPI/UART</text>
+  <text x="500" y="555" text-anchor="middle" font-size="10" fill="white">PSoC ↔ ATmega</text>
+  
+  <!-- USB/UART a PC -->
+  <rect x="650" y="520" width="200" height="50" fill="#3498db" stroke="#2980b9" stroke-width="2" rx="5"/>
+  <text x="750" y="540" text-anchor="middle" font-size="12" font-weight="bold" fill="white">USB/UART</text>
+  <text x="750" y="555" text-anchor="middle" font-size="10" fill="white">PSoC ↔ PC</text>
+  
+  <!-- Señal Digital YF-S401 -->
+  <rect x="900" y="520" width="200" height="50" fill="#27ae60" stroke="#229954" stroke-width="2" rx="5"/>
+  <text x="1000" y="540" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Señal Digital</text>
+  <text x="1000" y="555" text-anchor="middle" font-size="10" fill="white">YF-S401 → PSoC ADC</text>
+  
+  <!-- Capa de Interfaz -->
+  <rect x="50" y="620" width="1300" height="120" fill="#ebedef" stroke="#bdc3c7" stroke-width="2" rx="10"/>
+  <text x="700" y="640" text-anchor="middle" font-size="16" font-weight="bold" fill="#34495e">CAPA DE INTERFAZ DE USUARIO</text>
+  
+  <!-- LCD Display -->
+  <rect x="200" y="660" width="200" height="70" fill="#34495e" stroke="#2c3e50" stroke-width="2" rx="5"/>
+  <text x="300" y="680" text-anchor="middle" font-size="12" font-weight="bold" fill="white">LCD 16x2</text>
+  <text x="300" y="695" text-anchor="middle" font-size="10" fill="white">Display Local</text>
+  <text x="300" y="710" text-anchor="middle" font-size="10" fill="white">con I2C</text>
+  <text x="300" y="725" text-anchor="middle" font-size="8" fill="white">Datos en tiempo real</text>
+  
+  <!-- Interfaz PC -->
+  <rect x="500" y="660" width="300" height="70" fill="#7f8c8d" stroke="#6c7b7d" stroke-width="2" rx="5"/>
+  <text x="650" y="680" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Interfaz Laptop/PC</text>
+  <text x="650" y="695" text-anchor="middle" font-size="10" fill="white">Visualización avanzada</text>
+  <text x="650" y="710" text-anchor="middle" font-size="10" fill="white">Gráficos en tiempo real</text>
+  <text x="650" y="725" text-anchor="middle" font-size="8" fill="white">Almacenamiento de datos</text>
+  
+  <!-- Visualización de Datos -->
+  <rect x="850" y="660" width="200" height="70" fill="#16a085" stroke="#138d75" stroke-width="2" rx="5"/>
+  <text x="950" y="680" text-anchor="middle" font-size="12" font-weight="bold" fill="white">DATOS FINALES</text>
+  <text x="870" y="695" font-size="9" fill="white">• SpO2 (%)</text>
+  <text x="870" y="705" font-size="9" fill="white">• Freq. Cardíaca (BPM)</text>
+  <text x="870" y="715" font-size="9" fill="white">• Flujo Aire (L/min)</text>
+  <text x="870" y="725" font-size="9" fill="white">• Presión compensada</text>
+  
+  <!-- Flechas de flujo de datos -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50"/>
+    </marker>
+  </defs>
+  
+  <!-- Sensores a Procesamiento -->
+  <line x1="175" y1="190" x2="175" y2="240" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="375" y1="190" x2="375" y2="240" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="575" y1="190" x2="575" y2="240" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Procesamiento a Comunicación -->
+  <line x1="350" y1="410" x2="350" y2="480" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="675" y1="410" x2="675" y2="480" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Comunicación a Interfaz -->
+  <line x1="300" y1="570" x2="300" y2="620" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="750" y1="570" x2="650" y2="620" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Flujo lateral PSoC a ATmega -->
+  <line x1="500" y1="350" x2="550" y2="350" stroke="#8e44ad" stroke-width="3" marker-end="url(#arrowhead)"/>
+  
+  <!-- Flujo PSoC a Algoritmos -->
+  <line x1="500" y1="320" x2="850" y2="320" stroke="#f39c12" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Notas importantes -->
+  <rect x="50" y="780" width="1300" height="80" fill="#fff3cd" stroke="#ffeaa7" stroke-width="1" rx="5"/>
+  <text x="700" y="800" text-anchor="middle" font-size="14" font-weight="bold" fill="#856404">NOTAS DE IMPLEMENTACIÓN</text>
+  <text x="70" y="820" font-size="11" fill="#856404">• MAX30100 actúa como I2C Master para coordinar lecturas de BMP280</text>
+  <text x="70" y="835" font-size="11" fill="#856404">• PSoC utiliza ADC SAR para digitalizar señal de YF-S401 y procesar con compensación de presión del BMP280</text>
+  <text x="70" y="850" font-size="11" fill="#856404">• ATmega328P maneja interrupciones para alternar información en LCD (SpO2, Frecuencia, Flujo compensado)</text>
+</svg>

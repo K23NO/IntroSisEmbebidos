@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Monitoreo Respiratorio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .patient-info {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .patient-info h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .imc-display {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .imc-display h3 {
+            margin-bottom: 5px;
+        }
+
+        .imc-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .imc-category {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .monitoring-area {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .vital-signs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .vital-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid;
+        }
+
+        .vital-card.spo2 { border-left-color: #e74c3c; }
+        .vital-card.bpm { border-left-color: #f39c12; }
+        .vital-card.pressure { border-left-color: #9b59b6; }
+
+        .vital-card h4 {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .vital-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .vital-unit {
+            font-size: 0.8em;
+            color: #7f8c8d;
+        }
+
+        .spirometer-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .spirometer-section h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .flow-container {
+            background: #34495e;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .flow-bar-container {
+            background: #2c3e50;
+            height: 60px;
+            border-radius: 30px;
+            position: relative;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .flow-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #2ecc71, #f1c40f, #e67e22, #e74c3c);
+            border-radius: 30px;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 15px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .flow-value {
+            color: white;
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .flow-labels {
+            display: flex;
+            justify-content: space-between;
+            color: #bdc3c7;
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #229954);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(39, 174, 96, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected { background: #27ae60; }
+        .status-disconnected { background: #e74c3c; }
+
+        .connection-status {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .data-log {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .data-log h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .log-entry {
+            padding: 8px;
+            border-bottom: 1px solid #ecf0f1;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .vital-signs {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🫁 Sistema de Monitoreo Respiratorio</h1>
+            <p>Análisis avanzado de función pulmonar y signos vitales</p>
+        </div>
+
+        <div class="main-content">
+            <div class="patient-info">
+                <h2>📋 Información del Paciente</h2>
+                
+                <div class="form-group">
+                    <label for="nombre">Nombre Completo:</label>
+                    <input type="text" id="nombre" placeholder="Ingrese el nombre del paciente">
+                </div>
+
+                <div class="form-group">
+                    <label for="genero">Género:</label>
+                    <select id="genero">
+                        <option value="">Seleccionar</option>
+                        <option value="masculino">Masculino</option>
+                        <option value="femenino">Femenino</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="peso">Peso (kg):</label>
+                    <input type="number" id="peso" placeholder="70" step="0.1">
+                </div>
+
+                <div class="form-group">
+                    <label for="altura">Altura (cm):</label>
+                    <input type="number" id="altura" placeholder="170" step="0.1">
+                </div>
+
+                <div class="imc-display">
+                    <h3>Índice de Masa Corporal</h3>
+                    <div class="imc-value" id="imcValue">--</div>
+                    <div class="imc-category" id="imcCategory">Ingrese peso y altura</div>
+                </div>
+
+                <div class="connection-status">
+                    <span class="status-indicator status-disconnected" id="statusIndicator"></span>
+                    <span id="connectionText">Desconectado del PSoC 5LP</span>
+                </div>
+            </div>
+
+            <div class="monitoring-area">
+                <h2>📊 Monitoreo en Tiempo Real</h2>
+                
+                <div class="vital-signs">
+                    <div class="vital-card spo2">
+                        <h4>SATURACIÓN O₂</h4>
+                        <div class="vital-value" id="spo2Value">--</div>
+                        <div class="vital-unit">%</div>
+                    </div>
+                    
+                    <div class="vital-card bpm">
+                        <h4>FRECUENCIA CARDÍACA</h4>
+                        <div class="vital-value" id="bpmValue">--</div>
+                        <div class="vital-unit">BPM</div>
+                    </div>
+                    
+                    <!--<div class="vital-card pressure">
+                       <h4>PRESIÓN ATMOSFÉRICA</h4>
+                        <div class="vital-value" id="pressureValue">--</div>
+                        <div class="vital-unit">hPa</div>
+                    </div> -->
+                </div>
+
+                <div class="spirometer-section">
+                    <h3>🌬️ Espirómetro - Flujo de Aire</h3>
+                    
+                    <div class="flow-container">
+                        <div class="flow-bar-container">
+                            <div class="flow-bar" id="flowBar">
+                                <span id="flowPercentage">0%</span>
+                            </div>
+                        </div>
+                        <div class="flow-value" id="flowValue">0.0 L/s</div>
+                        <div class="flow-labels">
+                            <span>0</span>
+                            <span>0.25</span>
+                            <span>0.5</span>
+                            <span>0.75</span>
+                            <span>1.0 L/s</span>
+                        </div>
+                    </div>
+                    <div class="dpef-value" style="text-align: center; margin-top: 15px; font-weight: bold; color: #2c3e50;">
+                        DPEF: <span id="dpefValue">0.0</span> L/s
+                    </div>
+                    <div class="health-status" style="text-align: center; margin-top: 10px; padding: 10px; border-radius: 8px; background-color: #ecf0f1;">
+                        Estado de salud: <span id="healthStatus">No evaluado</span>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="connectDevice()">🔗 Conectar</button>
+                    <button class="btn btn-success" onclick="startTest()">▶️ Iniciar Test</button>
+                    <button class="btn btn-warning" onclick="resetData()">🔄 Reset</button>
+                    <button class="btn btn-primary" onclick="saveData()">💾 Guardar</button>
+                </div>
+
+                <div class="data-log">
+                    <h4>📝 Registro de Datos</h4>
+                    <div id="logContainer">
+                        <div class="log-entry">Sistema iniciado - Esperando conexión...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables globales
+        let isConnected = false;
+        let isTestRunning = false;
+        let serialPort = null;
+        
+        // Arrays para calcular medias móviles
+        let bpmValues = [];
+        let spo2Values = [];
+        let flowValues = [];
+        
+        // Constantes para medias móviles
+        const MOVING_AVG_SIZE = 10; // Tamaño de la ventana para la media móvil
+
+        // Cálculo del IMC
+        function calculateIMC() {
+            const peso = parseFloat(document.getElementById('peso').value);
+            const altura = parseFloat(document.getElementById('altura').value) / 100; // convertir cm a m
+            
+            if (peso && altura) {
+                const imc = peso / (altura * altura);
+                const imcRounded = imc.toFixed(1);
+                
+                document.getElementById('imcValue').textContent = imcRounded;
+                
+                let categoria = '';
+                if (imc < 18.5) categoria = 'Bajo peso';
+                else if (imc < 25) categoria = 'Normal';
+                else if (imc < 30) categoria = 'Sobrepeso';
+                else categoria = 'Obesidad';
+                
+                document.getElementById('imcCategory').textContent = categoria;
+            }
+        }
+
+        // Event listeners para cálculo automático del IMC
+        document.getElementById('peso').addEventListener('input', calculateIMC);
+        document.getElementById('altura').addEventListener('input', calculateIMC);
+
+        // Función para agregar logs
+        function addLog(message) {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Simulación de conexión con PSoC 5LP
+        async function connectDevice() {
+            if ('serial' in navigator) {
+                try {
+                    serialPort = await navigator.serial.requestPort();
+                    await serialPort.open({ baudRate: 9600 });
+                    
+                    isConnected = true;
+                    document.getElementById('statusIndicator').className = 'status-indicator status-connected';
+                    document.getElementById('connectionText').textContent = 'Conectado al PSoC 5LP';
+                    addLog('Conexión establecida con PSoC 5LP');
+                    
+                    // Iniciar lectura de datos
+                    readSerialData();
+                } catch (error) {
+                    addLog('Error de conexión: ' + error.message);
+                }
+            } else {
+                alert('Tu navegador no soporta Web Serial API. Prueba con Chrome o Edge.');
+                addLog('Error: Navegador no compatible con Web Serial API');
+            }
+        }
+
+        // Lectura de datos seriales
+        async function readSerialData() {
+            const reader = serialPort.readable.getReader();
+            let buffer = "";
+            
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    const text = new TextDecoder().decode(value);
+                    buffer += text;
+                    
+                    // Buscar líneas completas terminadas en \r\n
+                    let lineEndIndex;
+                    while ((lineEndIndex = buffer.indexOf('\r\n')) !== -1) {
+                        const line = buffer.substring(0, lineEndIndex);
+                        buffer = buffer.substring(lineEndIndex + 2);
+                        
+                        // Procesar línea completa
+                        processSerialData(line);
+                    }
+                }
+            } catch (error) {
+                addLog('Error en lectura serial: ' + error.message);
+            } finally {
+                reader.releaseLock();
+            }
+        }
+
+        // Procesamiento de datos del PSoC
+        function processSerialData(data) {
+            // Añadir log con visualización hex de los caracteres para depuración
+            let hexData = '';
+            for (let i = 0; i < data.length; i++) {
+                hexData += data.charCodeAt(i).toString(16).padStart(2, '0') + ' ';
+            }
+            addLog('Datos recibidos: ' + data + ' [HEX: ' + hexData + ']');
+            
+            // Manejar mensajes de error
+            if (data.startsWith('CMD_ERROR')) {
+                addLog('Error en comando - Continuando monitoreo normal');
+                return;
+            }
+            
+            // Detectar fase de prueba inicial (10 segundos)
+            if (data.startsWith('INICIO_PRUEBA')) {
+                isTestRunning = true;
+                addLog('Prueba de flujo iniciada - Sople durante 10 segundos');
+                
+                // Limpiar valores previos
+                document.getElementById('spo2Value').textContent = '--';
+                document.getElementById('bpmValue').textContent = '--';
+                document.getElementById('flowValue').textContent = '0.00 L/s';
+                document.getElementById('dpefValue').textContent = '0.00';
+                updateFlowBar(0);
+                
+                return;
+            }
+            
+            // Fin de la prueba de 10 segundos
+            if (data.startsWith('FIN_PRUEBA')) {
+                isTestRunning = false;
+                addLog('Prueba finalizada - Iniciando monitoreo continuo');
+                const startBtn = document.querySelector('.btn-success, .btn-warning');
+                startBtn.textContent = '▶️ Iniciar Test';
+                startBtn.className = 'btn btn-success';
+                startBtn.disabled = false;
+                return;
+            }
+            
+            // Procesar datos de flujo durante la prueba inicial
+            if (isTestRunning && data.startsWith('FLUJO:')) {
+                const flowMatch = data.match(/FLUJO:([\d.]+)/);
+                if (flowMatch && flowMatch[1]) {
+                    const flowValue = parseFloat(flowMatch[1]);
+                    
+                    // Actualizar la interfaz directamente con el valor recibido
+                    document.getElementById('flowValue').textContent = flowValue.toFixed(2) + ' L/s';
+                    updateFlowBar(flowValue);
+                    
+                    // Actualizar el DPEF si este flujo es mayor que el valor actual
+                    const currentDpef = parseFloat(document.getElementById('dpefValue').textContent) || 0;
+                    if (flowValue > currentDpef) {
+                        document.getElementById('dpefValue').textContent = flowValue.toFixed(2);
+                        updateHealthStatus(flowValue);
+                    }
+                }
+                return;
+            }
+            
+            // Procesar datos continuos en formato DPEF;BPM;SpO2
+            const parts = data.split(';');
+            if (parts.length === 3) {
+                // Procesar DPEF
+                const dpefValue = parseFloat(parts[0]);
+                if (!isNaN(dpefValue)) {
+                    document.getElementById('dpefValue').textContent = dpefValue.toFixed(2);
+                    updateHealthStatus(dpefValue);
+                    updateFlowBar(dpefValue); // Actualizar la barra para reflejar el DPEF actual
+                }
+                
+                // Procesar BPM - sin filtrar, mostrar directo
+                if (parts[1] !== '--') {
+                    const bpmValue = parseInt(parts[1]);
+                    if (!isNaN(bpmValue)) {
+                        document.getElementById('bpmValue').textContent = bpmValue;
+                    }
+                }
+                
+                // Procesar SpO2 - sin filtrar, mostrar directo
+                if (parts[2] !== '--' && !parts[2].includes('\r') && !parts[2].includes('\n')) {
+                    const spo2Value = parseInt(parts[2]);
+                    if (!isNaN(spo2Value)) {
+                        document.getElementById('spo2Value').textContent = spo2Value;
+                    }
+                }
+                
+                // Evaluar signos vitales para actualizar la interfaz
+                evaluateVitalSigns();
+            }
+        }
+        
+        // Calcular media móvil
+        function calculateMovingAverage(values) {
+            if (values.length === 0) return 0;
+            const sum = values.reduce((a, b) => a + b, 0);
+            return sum / values.length;
+        }
+
+        // Evaluación del estado de salud según DPEF
+        function updateHealthStatus(dpefValue) {
+            let status = "";
+            let color = "";
+            
+            // Criterios de evaluación (basados en valores estándar)
+            if (dpefValue >= 0.3 && dpefValue <= 1.0) {
+                status = "Saludable";
+                color = "#27ae60"; // Verde
+            } else if (dpefValue > 0 && dpefValue < 0.3) {
+                status = "Por debajo del rango normal";
+                color = "#e67e22"; // Naranja
+            } else if (dpefValue > 1.0) {
+                status = "Por encima del rango normal";
+                color = "#f39c12"; // Amarillo
+            } else {
+                status = "No evaluado";
+                color = "#7f8c8d"; // Gris
+            }
+            
+            document.getElementById('healthStatus').textContent = status;
+            document.getElementById('healthStatus').style.color = color;
+        }
+        
+        // Función para enviar comandos con depuración
+        async function sendCommand(cmd) {
+            if (!serialPort) {
+                addLog('Error: No hay conexión con el dispositivo');
+                return false;
+            }
+            
+            try {
+                const encoder = new TextEncoder();
+                const writer = serialPort.writable.getWriter();
+                
+                // Probar con diferentes formatos del comando para determinar cuál acepta el PSoC
+                // Formato 1: Solo el comando (p. ej., "i" o "r")
+                let cmdToSend = cmd;
+                
+                // Mostrar en hexadecimal lo que se está enviando para depuración
+                let hexCmd = '';
+                for (let i = 0; i < cmdToSend.length; i++) {
+                    hexCmd += cmdToSend.charCodeAt(i).toString(16).padStart(2, '0') + ' ';
+                }
+                addLog(`Enviando comando: '${cmdToSend}' [HEX: ${hexCmd}]`);
+                
+                // Enviar el comando
+                await writer.write(encoder.encode(cmdToSend));
+                writer.releaseLock();
+                return true;
+            } catch (error) {
+                addLog('Error al enviar comando: ' + error.message);
+                return false;
+            }
+        }
+        
+        // Evaluación de signos vitales
+        function evaluateVitalSigns() {
+            // Obtener valores actuales
+            const spo2 = parseInt(document.getElementById('spo2Value').textContent);
+            const bpm = parseInt(document.getElementById('bpmValue').textContent);
+            const dpef = parseFloat(document.getElementById('dpefValue').textContent);
+            
+            // Evaluación para SpO2
+            let spo2Status = "No evaluado";
+            let spo2Color = "#7f8c8d";
+            
+            if (!isNaN(spo2)) {
+                if (spo2 >= 95) {
+                    spo2Status = "Normal";
+                    spo2Color = "#27ae60"; // Verde
+                } else if (spo2 >= 90 && spo2 < 95) {
+                    spo2Status = "Leve hipoxemia";
+                    spo2Color = "#f39c12"; // Amarillo
+                } else if (spo2 >= 85 && spo2 < 90) {
+                    spo2Status = "Moderada hipoxemia";
+                    spo2Color = "#e67e22"; // Naranja
+                } else if (spo2 < 85) {
+                    spo2Status = "Severa hipoxemia";
+                    spo2Color = "#e74c3c"; // Rojo
+                }
+                
+                // Cambiar color del indicador SpO2
+                const spo2Card = document.querySelector('.vital-card.spo2');
+                spo2Card.style.borderLeftColor = spo2Color;
+            }
+            
+            // Evaluación para BPM
+            let bpmStatus = "No evaluado";
+            let bpmColor = "#7f8c8d";
+            
+            if (!isNaN(bpm)) {
+                if (bpm >= 60 && bpm <= 100) {
+                    bpmStatus = "Normal";
+                    bpmColor = "#27ae60"; // Verde
+                } else if ((bpm > 50 && bpm < 60) || (bpm > 100 && bpm <= 110)) {
+                    bpmStatus = "Ligera alteración";
+                    bpmColor = "#f39c12"; // Amarillo
+                } else if ((bpm >= 40 && bpm <= 50) || (bpm > 110 && bpm <= 120)) {
+                    bpmStatus = "Moderada alteración";
+                    bpmColor = "#e67e22"; // Naranja
+                } else {
+                    bpmStatus = "Alteración significativa";
+                    bpmColor = "#e74c3c"; // Rojo
+                }
+                
+                // Cambiar color del indicador BPM
+                const bpmCard = document.querySelector('.vital-card.bpm');
+                bpmCard.style.borderLeftColor = bpmColor;
+            }
+            
+            // Devolver evaluaciones para uso en el guardado
+            return {
+                spo2: { value: isNaN(spo2) ? "--" : spo2, status: spo2Status },
+                bpm: { value: isNaN(bpm) ? "--" : bpm, status: bpmStatus },
+                dpef: { value: isNaN(dpef) ? 0 : dpef, status: document.getElementById('healthStatus').textContent }
+            };
+        }
+
+        // Actualizar barra de flujo
+        function updateFlowBar(flowValue) {
+            const maxFlow = 1.0; // L/s máximo (basado en el valor máximo saludable DPEF)
+            const percentage = Math.min((flowValue / maxFlow) * 100, 100);
+            
+            document.getElementById('flowBar').style.width = percentage + '%';
+            document.getElementById('flowPercentage').textContent = percentage.toFixed(0) + '%';
+            document.getElementById('flowValue').textContent = flowValue.toFixed(2) + ' L/s';
+        }
+
+        // Iniciar test - Envía comando INICIAR_TEST al PSoC
+        async function startTest() {
+            if (!isConnected) {
+                alert('Por favor conecte el dispositivo primero');
+                return;
+            }
+            
+            const nombre = document.getElementById('nombre').value;
+            if (!nombre) {
+                alert('Por favor ingrese el nombre del paciente');
+                return;
+            }
+            
+            // Cambiar estado del botón
+            isTestRunning = true;
+            const btn = event.target;
+            btn.textContent = '⏸️ Test en curso...';
+            btn.className = 'btn btn-warning';
+            btn.disabled = true; // Deshabilitar durante la prueba
+            
+            // Limpiar valores previos
+            document.getElementById('spo2Value').textContent = '--';
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('flowValue').textContent = '0.00 L/s';
+            document.getElementById('dpefValue').textContent = '0.00';
+            flowValues = [];
+            bpmValues = [];
+            spo2Values = [];
+            updateFlowBar(0);
+            
+            addLog(`Preparando para iniciar test...`);
+            
+            // Probar con diferentes formatos del comando
+            let commandsToTry = ["i", "i\r", "i\n", "i\r\n"];
+            let success = false;
+            
+            for (const cmd of commandsToTry) {
+                addLog(`Intentando con formato de comando: ${JSON.stringify(cmd)}`);
+                success = await sendCommand(cmd);
+                if (success) {
+                    addLog(`Test iniciado para paciente: ${nombre} usando formato: ${JSON.stringify(cmd)}`);
+                    break;
+                }
+                // Pequeña pausa entre intentos
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            if (!success) {
+                // Restablecer botón en caso de error
+                addLog("No se pudo iniciar el test después de probar todos los formatos de comando");
+                isTestRunning = false;
+                btn.textContent = '▶️ Iniciar Test';
+                btn.className = 'btn btn-success';
+                btn.disabled = false;
+            }
+            
+            // Habilitar botón después de 10 segundos (duración aproximada de la prueba)
+            setTimeout(() => {
+                btn.textContent = '▶️ Iniciar Test';
+                btn.className = 'btn btn-success';
+                btn.disabled = false;
+            }, 10000);
+        }
+
+        // Reset de datos - Envía comando RESET_DATA al PSoC
+        async function resetData() {
+            // Probar con diferentes formatos del comando
+            let commandsToTry = ["r", "r\r", "r\n", "r\r\n"];
+            let success = false;
+            
+            for (const cmd of commandsToTry) {
+                addLog(`Intentando reset con formato de comando: ${JSON.stringify(cmd)}`);
+                success = await sendCommand(cmd);
+                if (success) {
+                    addLog(`Comando de reset enviado correctamente usando formato: ${JSON.stringify(cmd)}`);
+                    break;
+                }
+                // Pequeña pausa entre intentos
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            if (!success) {
+                addLog("No se pudo enviar el comando de reset después de probar todos los formatos");
+            }
+            
+            document.getElementById('spo2Value').textContent = '--';
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('dpefValue').textContent = '0.00';
+            document.getElementById('healthStatus').textContent = 'No evaluado';
+            document.getElementById('healthStatus').style.color = '#7f8c8d';
+            updateFlowBar(0);
+            
+            document.getElementById('spo2Value').textContent = '--';
+            document.getElementById('bpmValue').textContent = '--';
+            document.getElementById('dpefValue').textContent = '0.00';
+            document.getElementById('healthStatus').textContent = 'No evaluado';
+            document.getElementById('healthStatus').style.color = '#7f8c8d';
+            updateFlowBar(0);
+            
+            // Resetear los arrays de datos
+            flowValues = [];
+            bpmValues = [];
+            spo2Values = [];
+            
+            isTestRunning = false;
+            const startBtn = document.querySelector('.btn-success, .btn-warning');
+            startBtn.textContent = '▶️ Iniciar Test';
+            startBtn.className = 'btn btn-success';
+            startBtn.disabled = false;
+            
+            addLog('Datos reiniciados');
+        }
+
+        // Guardar datos
+        function saveData() {
+            const nombre = document.getElementById('nombre').value;
+            const genero = document.getElementById('genero').value;
+            const peso = document.getElementById('peso').value;
+            const altura = document.getElementById('altura').value;
+            const imc = document.getElementById('imcValue').textContent;
+            
+            // Obtener evaluaciones de salud
+            const evaluations = evaluateVitalSigns();
+            
+            const data = {
+                timestamp: new Date().toISOString(),
+                paciente: {
+                    nombre: nombre,
+                    genero: genero,
+                    peso: peso,
+                    altura: altura,
+                    imc: imc
+                },
+                mediciones: {
+                    spo2: evaluations.spo2.value,
+                    bpm: evaluations.bpm.value,
+                    dpef: evaluations.dpef.value + " L/s",
+                },
+                evaluacion: {
+                    spo2: {
+                        valor: evaluations.spo2.value,
+                        estado: evaluations.spo2.status,
+                        referencia: "Normal: ≥95%, Leve hipoxemia: 90-94%, Moderada: 85-89%, Severa: <85%"
+                    },
+                    ritmo_cardiaco: {
+                        valor: evaluations.bpm.value,
+                        estado: evaluations.bpm.status,
+                        referencia: "Normal: 60-100 BPM, Bradicardia: <60 BPM, Taquicardia: >100 BPM"
+                    },
+                    flujo_respiratorio: {
+                        valor: evaluations.dpef.value + " L/s",
+                        estado: evaluations.dpef.status,
+                        referencia: "Rango normal: 0.3-1.0 L/s",
+                        comentario: getHealthComment(evaluations.dpef.value)
+                    }
+                }
+            };
+            
+            // Crear y descargar archivo JSON
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `medicion_${nombre}_${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            addLog(`Datos guardados para ${nombre}`);
+        }
+        
+        // Obtener comentario según el valor DPEF
+        function getHealthComment(dpefValue) {
+            if (dpefValue >= 0.3 && dpefValue <= 1.0) {
+                return "El Flujo Espiratorio Pico (DPEF) está dentro del rango saludable (0.3-1.0 L/s).";
+            } else if (dpefValue > 0 && dpefValue < 0.3) {
+                return "El Flujo Espiratorio Pico (DPEF) está por debajo del rango normal. Podría indicar obstrucción de las vías respiratorias o debilidad muscular respiratoria.";
+            } else if (dpefValue > 1.0) {
+                return "El Flujo Espiratorio Pico (DPEF) está por encima del rango normal. Esto podría ser positivo en atletas o indicar hiperventilación.";
+            } else {
+                return "No se ha realizado una evaluación completa del Flujo Espiratorio Pico (DPEF).";
+            }
+        }
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('Interfaz iniciada - Lista para conectar con PSoC 5LP');
+            
+            // Actualizar evaluación de salud cuando cambie el estado
+            setInterval(evaluateVitalSigns, 2000);
+        });
+    </script>
+</body>
+</html>
